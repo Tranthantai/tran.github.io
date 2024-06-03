@@ -1,22 +1,25 @@
 <?php
+
 namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
 use App\Models\Car;
 use App\Models\Mf;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\File;
+
 
 class CarController extends Controller
 {
-    /**x`
+    /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
      */
     public function index()
     {
-        $cars = car::paginate(10);
-        return view('car.car-list',compact('cars'));
+        $car=Car::paginate(5);
+        return view('car.car-list',compact('car'));
     }
 
     /**
@@ -42,15 +45,15 @@ class CarController extends Controller
         [
             "description"  => "required",
             "model" => "required",
-            "produced_on"  => "required|date",
+            "product_on"  => "required|date",
             "mf_id" =>"required",
             'image_file'=>'mimes:jpeg,jpg,png,gif|max:10000'
         ]);
 
         if ($validation->fails()){
-            return redirect('cars/create')->withErrors($validation)->withInput();
+            return redirect('car/create')->withErrors($validation)->withInput();
         }
-       
+        $name = null;
         if($request->hasfile('image_file'))
         {
             $file = $request->file('image_file');
@@ -62,13 +65,13 @@ class CarController extends Controller
         $car=new Car();
         $car->description=$request->input('description');
         $car->model=$request->input('model');
-        $car->produced_on=$request->input('produced_on');
+        $car->product_on=$request->input('product_on');
         $car->mf_id=$request->input('mf_id');
-        $car->image=$name;
+        $car->image=$name ?? '';
         $car->save();
-        return redirect('cars')->with('message','Thêm xe thành công');
+        return redirect('car')->with('message','Thêm xe thành công');
     }
-
+    
     /**
      * Display the specified resource.
      *
@@ -77,7 +80,8 @@ class CarController extends Controller
      */
     public function show($id)
     {
-        $car = Car::find($id);
+        $car=Car::find($id);
+        //tương đương select* from where
         return view('car.car-show',compact('car'));
     }
 
@@ -89,9 +93,9 @@ class CarController extends Controller
      */
     public function edit($id)
     {
+        $mfs=Mf::all();
         $car=Car::find($id);
-        $mf=Mf::all();
-        return view('car.car-edit',compact('car','mf'));
+        return view('car.car-edit',compact('mfs','car'));
     }
 
     /**
@@ -103,53 +107,74 @@ class CarController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $validation = Validator::make($request->all(), [
-        "description" => "required",
-        "model" => "required",
-        "produced_on" => "required|date",
-        "mf_id" => "required",
-        'image_file' => 'mimes:jpeg,jpg,png,gif|max:10000000'
-    ]);
+        $name='';
+        $validation = Validator::make($request->all(),
+        [
+            "description"  => "required",
+            "model" => "required",
+            "product_on"  => "required|date",
+            "mf_id" =>"required",
+            'image_file'=>'mimes:jpeg,jpg,png,gif|max:10000'
+        ]);
 
-    if ($validation->fails()) {
-        return redirect()->back()->withErrors($validation)->withInput();
+        if ($validation->fails()){
+            return redirect()->back()->withErrors($validation)->withInput();
+        }
+        if($request->hasfile('image_file'))
+        {
+            $file = $request->file('image_file');
+            $name=time().'_'.$file->getClientOriginalName();
+            $destinationPath=public_path('images'); //project\public\images, //public_path(): trả về đường dẫn tới thư mục public
+            $file->move($destinationPath, $name); //lưu hình ảnh vào thư mục public/images/
+        }
+        //lấy về xe cần sửa
+        $car=Car::find($id);
+        if($car!=null){
+            $car->description=$request->input('description');
+            $car->model=$request->input('model');
+            $car->product_on=$request->input('product_on');
+            $car->mf_id=$request->input('mf_id');
+            if($name==''){
+                $name=$car->image;
+            }    
+            $car->image=$name;  
+            $car->save();
+        }
+        return redirect('car')->with('message','Sửa xe thành công');
     }
+    
 
-    $car = Car::find($id);
-
-    $car->description = $request->input('description');
-    $car->model = $request->input('model');
-    $car->produced_on = $request->input('produced_on');
-    $car->mf_id = $request->input('mf_id');
-
-    if ($request->hasFile('image_file')) {
-        $file = $request->file('image_file');
-        $name = time() . '_' . $file->getClientOriginalName();
-        $destinationPath = public_path('image');
-        $file->move($destinationPath, $name);
-        $car->image = $name;
-    }
-
-    $car->save();
-
-    return redirect('cars')->with('message', 'Cập nhật thông tin xe thành công');
-}
-  
-
+    /**
+     * Remove the specified resource from storage.
+     *
+     * @param  int  $id
+* @return \Illuminate\Http\Response
+     */
     public function destroy($id)
     {
-        $car = Car::find($id);
+        $car=Car::find($id);
+        
         $linkImage=public_path('image/').$car->image;
-        if(File::exists($linkImage)){   
+        if(File::exists($linkImage)){
             File::delete($linkImage);
         }
         $car->delete();
-        return redirect()->back()->with('message','Bạn đã xoá thành công');
-        
+        return redirect()->back()->with('message', 'bạn đã xóa thành công !');
     }
-    public function postSearch(Request $req){
-        $search_value=$req->txtSearch;
-        $cars_search=Car::where('model','like','%'.$search_value)->orWhere('description','like','%'.$search_value.'%')->PAGINATE(3);
-        return view('car.car-list',compact('cars_search'));
+  
+    public function postSearch(Request $request)
+    {
+        $query = $request->input('query');
+    
+        $car = Car::with('mf') // Eager load the related mf table
+                    ->where('model', 'LIKE', '%' . $query . '%')
+                    ->orWhere('description', 'LIKE', '%' . $query . '%')
+                    ->orWhereHas('mf', function ($q) use ($query) {
+                        $q->where('mf_name', 'LIKE', '%' . $query . '%');
+                    })
+                    ->paginate(5);
+    
+        return view('car.car-list', compact('car'))->with('search_query', $query);
     }
+    
 }

@@ -1,10 +1,12 @@
 <?php
 
 namespace App\Providers;
-
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Pagination\Paginator;
-
+use Illuminate\Support\ServiceProvider;
+use App\Models\Cart;
+use Illuminate\Support\Facades\View;
+use Illuminate\Support\Facades\Session;
+use Illuminate\View\View as ViewContract;
 class AppServiceProvider extends ServiceProvider
 {
     /**
@@ -14,7 +16,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        //
+    
     }
 
     /**
@@ -25,6 +27,17 @@ class AppServiceProvider extends ServiceProvider
     public function boot()
     {
         Paginator::useBootstrapFour();
-
+        View::composer(['layout.header','cart.checkout'], function (ViewContract $view) {
+            if(Session::has('cart')){
+                $oldCart = Session::get('cart'); // Session cart created in addToCart method of PageController
+                $cart = new Cart($oldCart);
+                $view->with([
+                    'cart' => $cart,
+                    'productCarts' => $cart->items,
+                    'totalPrice' => $cart->totalPrice,
+                    'totalQty' => $cart->totalQty
+                ]);
+            }
+        }); 
     }
 }
